@@ -323,8 +323,9 @@ function bandPower() {
   return p;
 }
 const toDb = p => Array.from(p, v => (v > 1e-14 ? 10 * Math.log10(v) : -140));
+// Roda por relógio (e não por quadro de tela), para a medição terminar mesmo se o navegador reduzir a animação.
 function tick() {
-  M.raf = requestAnimationFrame(tick); if (!M.an) return;
+  if (!M.an) return;
   const p = bandPower();
   for (let b = 0; b < NB; b++) M.live[b] = M.live[b] * 0.8 + p[b] * 0.2;
   if (M.acc) {
@@ -353,9 +354,10 @@ async function startAudio(source) {
     src.connect(pk).connect(M.an); src.start(); M.demo = src;
   }
   if (M.ac.state === 'suspended') await M.ac.resume();
-  if (!M.raf) tick();
+  M.raf = setInterval(tick, 50);
 }
 function stopAudio() {
+  clearInterval(M.raf); M.raf = 0;
   if (M.stream) M.stream.getTracks().forEach(t => t.stop());
   if (M.demo) { try { M.demo.stop(); } catch (e) { /* já parado */ } }
   if (M.ac) M.ac.close();
@@ -364,25 +366,39 @@ function stopAudio() {
 function micUI(mode) {
   $('btn-mic').textContent = mode === 'mic' ? 'Desligar microfone' : 'Ligar microfone';
   $('btn-demo').textContent = mode === 'demo' ? 'Parar demonstração' : 'Demonstração';
-  $('btn-cap').disabled = !mode; $('btn-cap').textContent = 'Medir 10 s';
+  $('btn-cap').textContent = 'Medir 10 s';
   $('mic-info').textContent = mode === 'mic' ? 'Microfone ligado. Nada é gravado nem enviado.' : mode === 'demo' ? 'Sinal de exemplo, com uma sobra proposital perto de 250 Hz.' : 'O microfone só é usado nesta aba, e nada é gravado nem enviado.';
   M.mode = mode;
 }
+async function micOn() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('Este navegador não libera o microfone para esta página. Abra pelo Chrome, no endereço https.', 'bad'); return false; }
+  try {
+    await startAudio('mic'); micUI('mic');
+    M.stream.getTracks().forEach(t => { t.onended = () => { if (M.mode === 'mic') { stopAudio(); micUI(''); draw(); say('O microfone foi interrompido pelo aparelho. Toque em Medir 10 s para ligar de novo.', 'bad'); } }; });
+    return true;
+  } catch (e) { stopAudio(); micUI(''); say(e && e.name === 'NotAllowedError' ? 'Permissão do microfone negada. Libere nas configurações do site e tente de novo.' : 'Não consegui abrir o microfone: ' + (e && e.message || e), 'bad'); return false; }
+}
 $('btn-mic').onclick = async () => {
   if (M.mode === 'mic') { stopAudio(); micUI(''); draw(); return; }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('Este navegador não libera o microfone para esta página. Abra pelo Chrome, no endereço https.', 'bad'); return; }
-  try { await startAudio('mic'); micUI('mic'); }
-  catch (e) { stopAudio(); micUI(''); say(e && e.name === 'NotAllowedError' ? 'Permissão do microfone negada. Libere nas configurações do site e tente de novo.' : 'Não consegui abrir o microfone: ' + (e && e.message || e), 'bad'); }
+  await micOn();
 };
+// Ao sair da página (tela apagada, outro aplicativo), o Android corta o áudio: desliga de forma limpa.
+document.addEventListener('visibilitychange', () => { if (document.hidden && M.mode) { stopAudio(); micUI(''); } });
 $('btn-demo').onclick = async () => {
   if (M.mode === 'demo') { stopAudio(); micUI(''); draw(); return; }
   try { await startAudio('demo'); micUI('demo'); } catch (e) { stopAudio(); micUI(''); say('Não consegui iniciar o áudio: ' + (e && e.message || e), 'bad'); }
 };
-$('btn-cap').onclick = () => { if (!M.an || M.acc) return; M.acc = new Float64Array(NB); M.accN = 0; M.until = performance.now() + 10000; };
+$('btn-cap').onclick = async () => {
+  if (M.acc) return;
+  if (!M.an && !(await micOn())) return;   // liga o microfone sozinho, se estiver desligado
+  try { if (M.ac.state !== 'running') await M.ac.resume(); } catch (e) { /* segue; a medição acusa se vier vazia */ }
+  M.acc = new Float64Array(NB); M.accN = 0; M.until = performance.now() + 10000;
+  $('btn-cap').textContent = 'Medindo… 10 s';
+};
 function finishCapture() {
   const db = toDb(M.acc.map(v => v / Math.max(1, M.accN))).map(v => Math.round(v * 10) / 10); M.acc = null;
   $('btn-cap').textContent = 'Medir 10 s';
-  if (Math.max(...db) < -110) { say('Não chegou som nenhum nessa medição. Confira o microfone e tente de novo.', 'bad'); return; }
+  if (Math.max(...db) < -110) { stopAudio(); micUI(''); draw(); say('Não chegou som nenhum nessa medição. Desliguei o microfone; toque em Medir 10 s para ligar e tentar de novo.', 'bad'); return; }
   const id = Date.now(); const name = $('snap-name').value.trim() || 'Medição ' + (S.snaps.length + 1);
   S.snaps.push({ id, name, utc: new Date().toISOString(), db, demo: M.mode === 'demo' }); $('snap-name').value = '';
   if (S.a == null) S.a = id; else if (S.b == null) S.b = id;
@@ -425,7 +441,11 @@ function planCut(st, f, cut) {
   const bells = eqBands(st).filter(b => b.type === 'PEQ' || b.type === 'VEQ'); if (!bells.length) return null;
   const dist = b => Math.abs(Math.log2(b.freq / f));
   const near = bells.filter(b => dist(b) <= 1 / 3).sort((a, b) => dist(a) - dist(b))[0];
-  if (near && near.gain <= -6) return { text: `A banda ${near.k} já corta ${String(Math.abs(near.gain)).replace('.', ',')} dB perto dessa frequência. Cortar mais neste canal dificilmente resolve: a sobra deve vir da sala, das caixas ou de outro canal.`, set: null };
+  if (near && near.gain <= -4) return { text: `A banda ${near.k} já corta ${String(Math.abs(near.gain)).replace('.', ',')} dB perto dessa frequência. Cortar mais neste canal dificilmente resolve: a sobra deve vir da sala, das caixas, de outro canal, ou é o som natural do que está tocando.`, set: null };
+  // Pico ao lado de um corte fundo (até uma oitava): o pico é o que sobrou de pé; alivia-se o corte em vez de cortar mais.
+  const deep = !near && bells.filter(b => b.gain < -6 && dist(b) <= 1).sort((a, b) => dist(a) - dist(b))[0];
+  if (deep) { const ng = Math.min(deep.gain + 3, -6); const g = v => T.gain.fmt(v).replace('.', ',');
+    return { ease: deep, text: `Em vez de cortar aqui, aliviar o corte vizinho: banda ${deep.k}, em ${human('freq', fmtFreq(deep.freq))}, de ${g(deep.gain)} para ${g(ng)} dB.`, set: [[deep.p, 3, T.gain.fmt(ng)]] }; }
   if (near) { const ng = Math.max(-15, near.gain - cut);
     return { text: `Banda ${near.k}, que já está em ${human('freq', fmtFreq(near.freq))}: ganho de ${T.gain.fmt(near.gain).replace('.', ',')} para ${T.gain.fmt(ng).replace('.', ',')} dB.`, set: [[near.p, 3, T.gain.fmt(ng)]] }; }
   const free = bells.find(b => b.gain === 0);
@@ -467,21 +487,27 @@ function renderAnalysis() {
   if (!pk.length) box.append(el('p', { class: 'mut', text: 'Nenhuma faixa sobra mais de 5 dB em relação às vizinhas.' }));
   for (const p of pk) {
     const cut = Math.min(6, Math.max(2, Math.round(p.ex / 2 * 2) / 2)); const f = NOMHZ[p.b]; const rg = regionOf(f);
-    const cutTxt = String(cut).replace('.', ','); let what, apply = null;
+    const cutTxt = String(cut).replace('.', ','); const exTxt = p.ex.toFixed(1).replace('.', ','); let what, apply = null;
+    let why = `Na medição, essa faixa está ${exTxt} dB acima das vizinhas. O corte sugerido é cerca de metade disso, para corrigir sem exagerar.`;
+    let result = `${rg[3][0].toUpperCase() + rg[3].slice(1)}. Se cortar demais, ${rg[4]}.`;
     if (st) { const plan = planCut(st, f, cut);
       if (!plan) what = `${st.num} · ${st.name} não tem banda do tipo sino no equalizador. Escolha outro canal acima.`;
+      else if (plan.ease) { what = `Em ${st.num} · ${st.name}: ${plan.text}`; apply = plan.set;
+        why = `Essa faixa fica ao lado de um corte fundo (banda ${plan.ease.k}, ${String(Math.abs(plan.ease.gain)).replace('.', ',')} dB a menos em ${human('freq', fmtFreq(plan.ease.freq))}). O pico de ${exTxt} dB é o que sobrou de pé ao lado do buraco; cortar aqui também só deixaria tudo mais baixo.`;
+        result = 'A curva fica mais plana e o som mais natural; o pico diminui sem perder volume. Risco: se esse corte estava segurando microfonia, ela pode voltar. Teste falando no microfone no volume do culto e desfaça se apitar.'; }
       else if (plan.set) { what = `Em ${st.num} · ${st.name}, cortar ${cutTxt} dB. ${plan.text}`; apply = plan.set; }
       else { const used = eqBands(st).map(b => `banda ${b.k} em ${human('freq', fmtFreq(b.freq))} (${T.gain.fmt(b.gain).replace('.', ',')} dB)`).join('; ');
         what = `${st.num} · ${st.name}: ${plan.text} Hoje: ${used}.`; }
     } else what = `Cortar cerca de ${cutTxt} dB nessa frequência, no canal que está tocando. Abra uma cena para a página indicar a banda.`;
+    if (st && !apply) why = `Na medição, essa faixa está ${exTxt} dB acima das vizinhas.`;
     const row = (k, v) => [el('dt', { text: k }), el('dd', { text: v })];
     const sug = el('div', { class: 'sug' },
       el('p', {}, el('b', { text: hzLabel(p.b) }), ` sobra ${p.ex.toFixed(1).replace('.', ',')} dB em relação às faixas vizinhas.`),
       el('dl', {},
         ...row('Região', `${rg[1][0].toUpperCase() + rg[1].slice(1)}. Em excesso: ${rg[2]}.`),
         ...row('O que mudar', what),
-        ...row('Por quê', `Na medição, essa faixa está ${p.ex.toFixed(1).replace('.', ',')} dB acima das vizinhas. O corte sugerido é cerca de metade disso, para corrigir sem exagerar.`),
-        ...row('Resultado esperado', `${rg[3][0].toUpperCase() + rg[3].slice(1)}. Se cortar demais, ${rg[4]}.`)));
+        ...row('Por quê', why),
+        ...row('Resultado esperado', result)));
     if (apply) sug.append(el('button', { class: 'pri', text: 'Aplicar na cena', onclick: () => {
       for (const [path, n, tok] of apply) setField({ path, n }, tok);
       S.cur = st.base; persist(); renderAll(); say(`Ajuste aplicado em ${st.num} · ${st.name}. Salve uma revisão para levar à mesa, e meça de novo depois.`, 'ok'); } }));
