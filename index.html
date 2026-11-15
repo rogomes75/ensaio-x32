@@ -67,6 +67,12 @@ canvas{width:100%;height:300px;display:block;background:#0e131b;border-radius:va
 .snap button.onb{background:var(--cy);color:#062129;border-color:var(--cy)}
 .sug{border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-top:10px;background:var(--panel2)}
 .sug p{margin:0 0 8px}
+.sug dl{margin:0 0 10px;display:grid;gap:6px;font-size:13px}
+.sug dt{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.sug dd{margin:0}
+.legend{display:flex;gap:6px 16px;flex-wrap:wrap;margin-top:8px;color:var(--mut)}
+.legend i{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:6px}
+.how{font-size:13px;color:var(--mut);margin:0 0 10px}
 ul.clean{list-style:none;padding:0;margin:0} ul.clean li{padding:8px 0;border-bottom:1px solid var(--line)}
 .msg{padding:10px 12px;border-radius:var(--r);background:var(--panel2);border:1px solid var(--line);margin-bottom:12px}
 .msg.bad{border-color:var(--bad)} .msg.ok{border-color:var(--ok)}
@@ -126,6 +132,11 @@ th{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em
     <div class="two">
       <div>
         <canvas id="cv" width="900" height="360"></canvas>
+        <div class="legend small">
+          <span><i style="background:#3d4d6b"></i>Barras: o som agora, ao vivo</span>
+          <span><i style="background:var(--acc)"></i>Linha amarela: medição A</span>
+          <span><i style="background:var(--cy)"></i>Linha azul: medição B</span>
+        </div>
         <div class="bar" style="margin-top:12px">
           <input id="snap-name" class="grow" placeholder="Nome da medição (ex.: baixo sozinho)" aria-label="Nome da medição">
           <button id="btn-cap" class="pri" disabled>Medir 10 s</button>

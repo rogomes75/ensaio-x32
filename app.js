@@ -445,6 +445,17 @@ function renderMedir() {
     el('button', { text: 'Apagar', onclick: () => { S.snaps = S.snaps.filter(x => x.id !== s.id); if (S.a === s.id) S.a = null; if (S.b === s.id) S.b = null; persist(); renderMedir(); } })));
   renderAnalysis(); draw();
 }
+// Regiões do espectro: [até Hz, nome, como soa em excesso, resultado do corte, risco de cortar demais]
+const REG = [
+  [125, 'peso do grave', 'ronco ou estrondo que cobre o resto', 'grave mais firme e definido', 'o som fica magro, sem peso'],
+  [315, 'corpo', 'som embolado ou abafado', 'mais clareza; voz e instrumentos se separam', 'o som fica fino, sem corpo'],
+  [630, 'médio-grave', 'som de caixa de papelão, voz que parece dentro de um tubo', 'som mais aberto e natural', 'o som fica oco'],
+  [1600, 'médios', 'som anasalado, de telefone', 'timbre mais suave', 'a voz fica distante e some na mistura'],
+  [4000, 'presença', 'som ardido, que cansa o ouvido; é a região mais comum de microfonia', 'som menos agressivo', 'perde-se a clareza das palavras'],
+  [8000, 'sibilância', '"s" e "ch" chiando, pratos estridentes', 'agudos mais suaves', 'o som fica opaco, sem definição'],
+  [1e9, 'brilho', 'chiado ou agudo fino demais', 'menos chiado', 'o som fica abafado, sem ar'],
+];
+const regionOf = f => REG.find(r => f <= r[0]);
 function renderAnalysis() {
   const box = $('analysis'); box.textContent = ''; box.className = '';
   const A = S.snaps.find(s => s.id === S.a), B = S.snaps.find(s => s.id === S.b);
@@ -452,17 +463,28 @@ function renderAnalysis() {
   const st = STRIPS.find(s => s.base === $('sug-strip').value);
   box.append(el('h3', { style: 'margin:0 0 6px;color:var(--acc)', text: 'A: ' + A.name }));
   const pk = peaksOf(A.db);
+  box.append(el('p', { class: 'how', text: 'A linha amarela do gráfico é esta medição. "Sobra" quer dizer que a faixa está acima da média das duas vizinhas de cada lado. Nem toda sobra é defeito: voz e instrumentos têm picos naturais. Corte só se você ouvir o problema descrito.' }));
   if (!pk.length) box.append(el('p', { class: 'mut', text: 'Nenhuma faixa sobra mais de 5 dB em relação às vizinhas.' }));
   for (const p of pk) {
-    const cut = Math.min(6, Math.max(2, Math.round(p.ex / 2 * 2) / 2)); const f = NOMHZ[p.b];
-    const sug = el('div', { class: 'sug' }, el('p', {}, el('b', { text: hzLabel(p.b) }), ` sobra ${p.ex.toFixed(1).replace('.', ',')} dB em relação às faixas vizinhas.`));
+    const cut = Math.min(6, Math.max(2, Math.round(p.ex / 2 * 2) / 2)); const f = NOMHZ[p.b]; const rg = regionOf(f);
+    const cutTxt = String(cut).replace('.', ','); let what, apply = null;
     if (st) { const plan = planCut(st, f, cut);
-      if (plan) { sug.append(el('p', { class: 'small', text: plan.set ? `Sugestão para ${st.num} · ${st.name}: cortar ${String(cut).replace('.', ',')} dB. ${plan.text}` : `${st.num} · ${st.name}: ${plan.text}` }));
-        if (plan.set) sug.append(el('button', { class: 'pri', text: 'Aplicar na cena', onclick: () => {
-          for (const [path, n, tok] of plan.set) setField({ path, n }, tok);
-          S.cur = st.base; persist(); renderAll(); say(`Ajuste aplicado em ${st.num} · ${st.name}. Salve uma revisão para levar à mesa, e meça de novo depois.`, 'ok'); } })); }
-      else sug.append(el('p', { class: 'small mut', text: 'Este canal não tem banda do tipo sino no equalizador.' }));
-    } else sug.append(el('p', { class: 'small mut', text: `Sugestão: cortar cerca de ${String(cut).replace('.', ',')} dB nessa frequência, no canal que está tocando.` }));
+      if (!plan) what = `${st.num} · ${st.name} não tem banda do tipo sino no equalizador. Escolha outro canal acima.`;
+      else if (plan.set) { what = `Em ${st.num} · ${st.name}, cortar ${cutTxt} dB. ${plan.text}`; apply = plan.set; }
+      else { const used = eqBands(st).map(b => `banda ${b.k} em ${human('freq', fmtFreq(b.freq))} (${T.gain.fmt(b.gain).replace('.', ',')} dB)`).join('; ');
+        what = `${st.num} · ${st.name}: ${plan.text} Hoje: ${used}.`; }
+    } else what = `Cortar cerca de ${cutTxt} dB nessa frequência, no canal que está tocando. Abra uma cena para a página indicar a banda.`;
+    const row = (k, v) => [el('dt', { text: k }), el('dd', { text: v })];
+    const sug = el('div', { class: 'sug' },
+      el('p', {}, el('b', { text: hzLabel(p.b) }), ` sobra ${p.ex.toFixed(1).replace('.', ',')} dB em relação às faixas vizinhas.`),
+      el('dl', {},
+        ...row('Região', `${rg[1][0].toUpperCase() + rg[1].slice(1)}. Em excesso: ${rg[2]}.`),
+        ...row('O que mudar', what),
+        ...row('Por quê', `Na medição, essa faixa está ${p.ex.toFixed(1).replace('.', ',')} dB acima das vizinhas. O corte sugerido é cerca de metade disso, para corrigir sem exagerar.`),
+        ...row('Resultado esperado', `${rg[3][0].toUpperCase() + rg[3].slice(1)}. Se cortar demais, ${rg[4]}.`)));
+    if (apply) sug.append(el('button', { class: 'pri', text: 'Aplicar na cena', onclick: () => {
+      for (const [path, n, tok] of apply) setField({ path, n }, tok);
+      S.cur = st.base; persist(); renderAll(); say(`Ajuste aplicado em ${st.num} · ${st.name}. Salve uma revisão para levar à mesa, e meça de novo depois.`, 'ok'); } }));
     box.append(sug);
   }
   if (!B) return;
