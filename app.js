@@ -406,10 +406,12 @@ function draw() {
 }
 // Faixas que sobram em relação às vizinhas (40 Hz a 10 kHz).
 function peaksOf(db) {
-  const out = [];
-  for (let b = 3; b <= 27; b++) {
+  // Começa em 80 Hz (o microfone do aparelho não é confiável abaixo disso) e ignora faixas
+  // mais de 25 dB abaixo da mais forte, que não chegam a ser ouvidas.
+  const out = [], top = Math.max(...db);
+  for (let b = 6; b <= 27; b++) {
     const nb = [db[b - 2], db[b - 1], db[b + 1], db[b + 2]]; const ex = db[b] - nb.reduce((a, v) => a + v, 0) / 4;
-    if (ex >= 5 && db[b] >= db[b - 1] && db[b] >= db[b + 1]) out.push({ b, ex });
+    if (ex >= 5 && db[b] >= top - 25 && db[b] >= db[b - 1] && db[b] >= db[b + 1]) out.push({ b, ex });
   }
   return out.sort((p, q) => q.ex - p.ex).slice(0, 4);
 }
