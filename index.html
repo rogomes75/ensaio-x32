@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141a24">
+<title>Ensaio X32</title>
+<style>
+/* Layout: barra fixa com abas; Cena = lista de canais + editor; Medir = gráfico + análise. Feito para tablet em cabine escura. */
+:root{
+  color-scheme: dark;
+  --bg:#141a24; --panel:#1c2431; --panel2:#243042; --line:#33415a;
+  --fg:#e8edf5; --mut:#9aa8bf; --acc:#f2b04a; --acc-ink:#1b1405;
+  --cy:#58c7e0; --ok:#6fd08c; --bad:#ff7d6e;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,"Segoe UI",Roboto,sans-serif}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;min-height:44px;cursor:pointer}
+button:active{transform:translateY(1px)}
+button.pri{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:650}
+button.ghost{background:transparent}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-height:44px;width:100%}
+header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);
+  padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;letter-spacing:.02em}
+header h1 span{color:var(--acc)}
+nav{display:flex;gap:6px;margin-left:auto}
+nav button{border-radius:999px;padding:8px 16px}
+nav button[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg);font-weight:650}
+main{padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px));max-width:1200px;margin:0 auto}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.bar .grow{flex:1;min-width:0}
+.mut{color:var(--mut)} .small{font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.empty{max-width:640px}
+.empty ol{padding-left:20px;margin:10px 0 16px} .empty li{margin:6px 0}
+.cena{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;align-items:start}
+.strips{display:flex;flex-direction:column;gap:4px;max-height:calc(100vh - 170px);overflow:auto;position:sticky;top:76px;padding-right:4px}
+.strips h3{margin:10px 0 2px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+.strips button{display:flex;gap:8px;align-items:center;text-align:left;padding:8px 10px;min-height:40px;background:transparent;border-color:transparent}
+.strips button .n{font-variant-numeric:tabular-nums;color:var(--mut);min-width:2.2em}
+.strips button .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.strips button[aria-current="true"]{background:var(--panel2);border-color:var(--line)}
+.strips button .dot{width:8px;height:8px;border-radius:50%;background:var(--acc)}
+.sec{margin-bottom:14px}
+.sec h2{font-size:15px;margin:0 0 10px;color:var(--mut);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.fld label{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
+.fld .note{font-size:12px;margin-top:3px;min-height:16px;font-variant-numeric:tabular-nums}
+.fld.chg input,.fld.chg select{border-color:var(--acc)}
+.fld .was{color:var(--acc)} .fld .ref{color:var(--cy)}
+.band{border-top:1px dashed var(--line);padding-top:10px;margin-top:10px}
+.band b{font-size:13px;color:var(--mut)}
+h2.title{font-size:20px;margin:0 0 12px}
+canvas{width:100%;height:300px;display:block;background:#0e131b;border-radius:var(--r);border:1px solid var(--line)}
+.two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;align-items:start}
+.snap{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.snap .nm{flex:1;min-width:0}
+.snap button{min-height:36px;padding:6px 10px}
+.snap button.on{background:var(--acc);color:var(--acc-ink);border-color:var(--acc)}
+.snap button.onb{background:var(--cy);color:#062129;border-color:var(--cy)}
+.sug{border:1px solid var(--line);border-radius:var(--r);padding:12px;margin-top:10px;background:var(--panel2)}
+.sug p{margin:0 0 8px}
+ul.clean{list-style:none;padding:0;margin:0} ul.clean li{padding:8px 0;border-bottom:1px solid var(--line)}
+.msg{padding:10px 12px;border-radius:var(--r);background:var(--panel2);border:1px solid var(--line);margin-bottom:12px}
+.msg.bad{border-color:var(--bad)} .msg.ok{border-color:var(--ok)}
+table{border-collapse:collapse;width:100%} td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+@media (max-width:760px){
+  .cena,.two{grid-template-columns:minmax(0,1fr)}
+  .strips{flex-direction:row;max-height:none;overflow-x:auto;position:static;padding-bottom:6px}
+  .strips h3{display:none} .strips button{flex:0 0 auto;border-color:var(--line)}
+  canvas{height:230px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ensaio <span>X32</span></h1>
+  <nav role="tablist">
+    <button role="tab" id="tab-cena" aria-selected="true" data-tab="cena">Cena</button>
+    <button role="tab" id="tab-medir" aria-selected="false" data-tab="medir">Medir</button>
+    <button role="tab" id="tab-rev" aria-selected="false" data-tab="rev">Revisões</button>
+  </nav>
+</header>
+<main>
+  <div id="msg" class="msg" hidden></div>
+
+  <section id="p-cena">
+    <div class="bar">
+      <button id="btn-open" class="pri">Abrir cena</button>
+      <button id="btn-ref">Abrir referência</button>
+      <div class="grow small mut" id="scene-info"></div>
+      <button id="btn-save" class="pri" disabled>Salvar revisão</button>
+    </div>
+    <input type="file" id="file-open" accept=".scn,text/plain,*/*" hidden>
+    <input type="file" id="file-ref" accept=".scn,text/plain,*/*" hidden>
+    <div id="empty" class="card empty">
+      <h2 class="title">Comece abrindo a cena da mesa</h2>
+      <ol>
+        <li>Na mesa, salve a cena no pendrive (<b>Scenes → Utility → Export</b>).</li>
+        <li>Ligue o pendrive no tablet e toque em <b>Abrir cena</b>.</li>
+        <li>Altere os valores aqui, ou use a aba <b>Medir</b> para receber sugestões.</li>
+        <li>Toque em <b>Salvar revisão</b>, grave o arquivo no pendrive e carregue na mesa.</li>
+      </ol>
+      <p class="mut small">Use só em teste ou ensaio. Carregar uma cena muda o som na hora; nunca faça isso durante o culto.</p>
+    </div>
+    <div id="cena" class="cena" hidden>
+      <div class="strips" id="strips"></div>
+      <div id="editor"></div>
+    </div>
+  </section>
+
+  <section id="p-medir" hidden>
+    <div class="bar">
+      <button id="btn-mic" class="pri">Ligar microfone</button>
+      <button id="btn-demo" class="ghost">Demonstração</button>
+      <div class="grow small mut" id="mic-info">O microfone só é usado nesta aba, e nada é gravado nem enviado.</div>
+    </div>
+    <div class="two">
+      <div>
+        <canvas id="cv" width="900" height="360"></canvas>
+        <div class="bar" style="margin-top:12px">
+          <input id="snap-name" class="grow" placeholder="Nome da medição (ex.: baixo sozinho)" aria-label="Nome da medição">
+          <button id="btn-cap" class="pri" disabled>Medir 10 s</button>
+        </div>
+        <p class="small mut">Meça sempre do mesmo lugar. O microfone do tablet não é calibrado: confie nas comparações, não nos valores absolutos, e desconfie do que estiver abaixo de 100 Hz.</p>
+        <div id="snaps"></div>
+      </div>
+      <div class="card">
+        <h2 class="title">Análise</h2>
+        <div class="fld" style="margin-bottom:10px">
+          <label for="sug-strip">Aplicar sugestões em</label>
+          <select id="sug-strip"></select>
+        </div>
+        <div id="analysis" class="small mut">Faça uma medição e marque como <b>A</b>. Marque outra como <b>B</b> para comparar.</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="p-rev" hidden>
+    <div class="card" style="margin-bottom:16px">
+      <h2 class="title">Alterações ainda não salvas</h2>
+      <div id="changes"></div>
+    </div>
+    <div class="card">
+      <h2 class="title">Revisões salvas</h2>
+      <div id="revs"></div>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
